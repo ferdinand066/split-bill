@@ -121,7 +121,7 @@ export const useAddBillInformation = () => {
       
       return { header, details };
     },
-    onSuccess: (data, variables) => {
+    onSuccess: (_, variables) => {
       // Invalidate and refetch bill information headers for this bill
       queryClient.invalidateQueries({ 
         queryKey: queryKeys.billInformationHeaders(variables.billId) 

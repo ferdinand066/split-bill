@@ -1,17 +1,16 @@
-import { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useForm, useFieldArray } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { addBillInformationSchema, type AddBillInformationFormData } from '@/lib/validations';
+import { BillType, createBillInformationDetails, createBillInformationHeader } from '@/lib/database';
 import { useBill, useBillSubjects } from '@/lib/queries';
 import { formatCurrency } from '@/lib/utils';
-import { Plus, X, Split } from 'lucide-react';
+import { addBillInformationSchema, type AddBillInformationFormData } from '@/lib/validations';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createBillInformationHeader, createBillInformationDetails, BillType } from '@/lib/database';
+import { Plus, Split, X } from 'lucide-react';
+import { useFieldArray, useForm } from 'react-hook-form';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 
 const AddBillItemPage = () => {
   const { slug } = useParams();
