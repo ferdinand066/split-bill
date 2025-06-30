@@ -99,21 +99,21 @@ export default function DetailPage() {
       <div className="max-w-4xl mx-auto p-6">
         {/* Header */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4">
             <div>
               <h1 className="text-3xl font-bold text-gray-800">{bill.name}</h1>
               <p className="text-gray-600 mt-1">
                 {subjects.length} participants • {headers.length} items
               </p>
             </div>
-            <Link to={`/${slug}/add`}>
+            <Link to={`/${slug}/add`} className="ml-auto sm:w-fit">
               <Button>Add Bill Item</Button>
             </Link>
           </div>
 
           {/* Bill Type Filter */}
           <div className="flex flex-col sm:flex-row items-start sm:items-end sm:justify-between gap-4">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 w-full sm:w-fit">
               <label className="text-sm font-medium text-gray-700">Filter by type:</label>
               <Select value={selectedBillType} onValueChange={setSelectedBillType}>
                 <SelectTrigger className="w-full sm:w-48">
@@ -171,13 +171,13 @@ export default function DetailPage() {
 
                 return (
                   <div key={header.id} className="bg-white rounded-lg shadow-md p-6">
-                    <div className="flex items-start justify-between mb-4">
+                    <div className="flex flex-col sm:flex-row items-start justify-between mb-4 gap-x-4">
                       <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
+                        <div className="flex items-center gap-x-3 gap-y-2 mb-2 flex-wrap">
                           <h3 className="text-lg font-semibold text-gray-800">
                             {header.name}
                           </h3>
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getBillTypeColor(header.bill_type)}`}>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getBillTypeColor(header.bill_type)} whitespace-nowrap`}>
                             {getBillTypeLabel(header.bill_type)}
                           </span>
                         </div>
@@ -195,7 +195,7 @@ export default function DetailPage() {
                     <div className="border-t pt-4">
                       <h4 className="text-sm font-medium text-gray-700 mb-3">Charged to:</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {headerDetails.map((detail) => (
+                        {headerDetails.sort((a, b) => a.charged_user.name.localeCompare(b.charged_user.name)).map((detail) => (
                           <div key={detail.id} className="flex justify-between items-center">
                             <span className="text-gray-600">{detail.charged_user.name}</span>
                             <span className="font-medium">{formatCurrency(detail.amount)}</span>
@@ -218,19 +218,19 @@ export default function DetailPage() {
                     <div className="col-span-12 sm:col-span-3 inline-flex items-center">
                       <h3 className="font-medium text-gray-800">{participant.name}</h3>
                     </div>
-                    <div className="text-center col-span-4 sm:col-span-3">
+                    <div className="text-center col-span-6 sm:col-span-3">
                         <p className="text-sm text-gray-600 mb-1">Paid</p>
                         <p className="font-semibold text-green-600">
                           {formatCurrency(participant.paidAmount)}
                         </p>
                       </div>
-                      <div className="text-center col-span-4 sm:col-span-3">
+                      <div className="text-center col-span-6 sm:col-span-3">
                         <p className="text-sm text-gray-600 mb-1">Charged</p>
                         <p className="font-semibold text-red-600">
                           {formatCurrency(participant.chargedAmount)}
                         </p>
                       </div>
-                      <div className="text-center col-span-4 sm:col-span-3">
+                      <div className="text-center col-span-12 sm:col-span-3">
                         <p className="text-sm text-gray-600 mb-1">Balance</p>
                         <p className={`font-semibold ${
                           participant.balance > 0 

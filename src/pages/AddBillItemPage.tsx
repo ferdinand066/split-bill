@@ -19,6 +19,7 @@ const AddBillItemPage = () => {
 
   const { data: bill, isLoading: billLoading, error: billError } = useBill(slug || '');
   const { data: subjects = [], isLoading: subjectsLoading } = useBillSubjects(bill?.id || 0);
+  const sortedSubjects = subjects.sort((a, b) => a.name.toLocaleLowerCase().localeCompare(b.name.toLocaleLowerCase()));
 
   const form = useForm<AddBillInformationFormData>({
     resolver: zodResolver(addBillInformationSchema),
@@ -255,7 +256,7 @@ const AddBillItemPage = () => {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {subjects.map((subject) => (
+                      {sortedSubjects.map((subject) => (
                         <SelectItem key={subject.id} value={subject.id.toString()}>
                           {subject.name}
                         </SelectItem>
@@ -309,7 +310,7 @@ const AddBillItemPage = () => {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {subjects.map((subject) => (
+                            {sortedSubjects.map((subject) => (
                               <SelectItem key={subject.id} value={subject.id.toString()}>
                                 {subject.name}
                               </SelectItem>

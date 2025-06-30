@@ -124,7 +124,7 @@ export const getBillInformationHeaders = async (billId: number): Promise<BillInf
       paid_by:bill_subjects!bill_information_headers_paid_by_id_fkey(*)
     `)
     .eq('bill_id', billId)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
 
   if (error) throw error
   return data
