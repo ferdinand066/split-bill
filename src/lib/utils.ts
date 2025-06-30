@@ -17,3 +17,7 @@ export function formatCurrency(amount: number): string {
 export function formatNumber(amount: number): string {
   return new Intl.NumberFormat('id-ID').format(amount);
 }
+
+export function capitalizeFirstLetter(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}

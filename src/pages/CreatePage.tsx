@@ -7,11 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { createBillSchema, type CreateBillFormData } from '@/lib/validations';
 import { useCreateBill } from '@/lib/queries';
+import { useBillHistoryStore } from '@/lib/store';
 import { Plus, X } from 'lucide-react';
 
 const CreatePage = () => {
   const navigate = useNavigate();
   const createBillMutation = useCreateBill();
+  const addBill = useBillHistoryStore(state => state.addBill);
 
   const form = useForm<CreateBillFormData>({
     resolver: zodResolver(createBillSchema),
@@ -32,6 +34,9 @@ const CreatePage = () => {
         name: data.name,
         subjects: data.subjects.filter(subject => subject.trim() !== ''),
       });
+      
+      // Add the new bill to the history store
+      addBill(result.bill);
       
       // Navigate to the bill detail page
       navigate(`/${result.bill.slug}`);

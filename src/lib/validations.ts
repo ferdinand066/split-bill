@@ -47,4 +47,24 @@ export const addBillInformationSchema = z.object({
     }),
 });
 
-export type AddBillInformationFormData = z.infer<typeof addBillInformationSchema>; 
+export type AddBillInformationFormData = z.infer<typeof addBillInformationSchema>;
+
+export const createPaymentSchema = z.object({
+  payFromId: z
+    .number()
+    .min(1, 'Please select who is paying'),
+  payToId: z
+    .number()
+    .min(1, 'Please select who is receiving'),
+  amount: z
+    .string()
+    .min(1, 'Amount is required')
+    .refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0, {
+      message: 'Amount must be a positive number',
+    }),
+}).refine((data) => data.payFromId !== data.payToId, {
+  message: 'Cannot pay to yourself',
+  path: ['payToId'],
+});
+
+export type CreatePaymentFormData = z.infer<typeof createPaymentSchema>; 

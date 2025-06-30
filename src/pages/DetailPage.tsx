@@ -1,29 +1,57 @@
-import { useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useBill, useBillSubjects, useBillInformationHeaders, useBillInformationDetailByBillId } from '@/lib/queries';
-import { formatCurrency } from '@/lib/utils';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
 import { BillType } from '@/lib/database';
-import { useState } from 'react';
+import { useBill, useBillInformationDetailByBillId, useBillInformationHeaders, useBillPayments, useBillSubjects, useCreateBillPayment } from '@/lib/queries';
+import { useBillHistoryStore } from '@/lib/store';
+import { formatCurrency } from '@/lib/utils';
+import { createPaymentSchema, type CreatePaymentFormData } from '@/lib/validations';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { ArrowDown, ArrowUp, Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
 
 export default function DetailPage() {
   const { slug } = useParams();
   const [selectedBillType, setSelectedBillType] = useState<string>('all');
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const addBill = useBillHistoryStore(state => state.addBill);
 
   const { data: bill, isLoading: billLoading, error: billError } = useBill(slug || '');
   const { data: subjects = [], isLoading: subjectsLoading } = useBillSubjects(bill?.id || 0);
   const { data: headers = [], isLoading: headersLoading } = useBillInformationHeaders(bill?.id || 0);
   const { data: details = [], isLoading: detailsLoading } = useBillInformationDetailByBillId(bill?.id || 0);
+  const { data: payments = [], isLoading: paymentsLoading } = useBillPayments(bill?.id || 0);
+  const createPaymentMutation = useCreateBillPayment();
 
-  const isLoading = billLoading || subjectsLoading || headersLoading || detailsLoading;
+  const form = useForm<CreatePaymentFormData>({
+    resolver: zodResolver(createPaymentSchema),
+    defaultValues: {
+      payFromId: 0,
+      payToId: 0,
+      amount: '',
+    },
+  });
+
+  // Add bill to history when it's loaded
+  useEffect(() => {
+    if (bill) {
+      addBill(bill);
+    }
+  }, [bill, addBill]);
+
+  const isLoading = billLoading || subjectsLoading || headersLoading || detailsLoading || paymentsLoading;
 
   // Filter headers by selected bill type
   const filteredHeaders = selectedBillType === 'all' 
     ? headers 
     : headers.filter(header => header.bill_type === parseInt(selectedBillType));
 
-  // Calculate participant summary
+  // Calculate participant summary with payments
   const participantSummary = subjects.map(subject => {
     const paidAmount = headers
       .filter(header => header.paid_by_id === subject.id)
@@ -33,15 +61,50 @@ export default function DetailPage() {
       .filter(detail => detail.charged_user_id === subject.id)
       .reduce((sum, detail) => sum + detail.amount, 0);
 
-    const balance = paidAmount - chargedAmount;
+    // Get payments where this person is involved
+    const paymentsInvolved = payments.filter(payment => 
+      payment.paid_from.id === subject.id || payment.paid_to.id === subject.id
+    );
+
+    // Calculate net payments (positive = received, negative = sent)
+    const netPayments = paymentsInvolved.reduce((sum, payment) => {
+      if (payment.pay_to_id === subject.id) {
+        return sum - payment.amount; // Received money
+      } else {
+        return sum + payment.amount; // Sent money
+      }
+    }, 0);
+
+    const balance = paidAmount - chargedAmount + netPayments;
 
     return {
       ...subject,
       paidAmount,
       chargedAmount,
-      balance
+      netPayments,
+      balance,
+      paymentsInvolved
     };
   });
+
+  const onSubmitPayment = async (data: CreatePaymentFormData) => {
+    if (!bill) return;
+
+    try {
+      await createPaymentMutation.mutateAsync({
+        billId: bill.id,
+        payFromId: data.payFromId,
+        payToId: data.payToId,
+        amount: parseFloat(data.amount),
+      });
+      
+      // Reset form and close dialog
+      form.reset();
+      setIsPaymentDialogOpen(false);
+    } catch (error) {
+      console.error('Error creating payment:', error);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -211,26 +274,148 @@ export default function DetailPage() {
 
           <TabsContent value="summary" className="space-y-4">
             <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">Participant Summary</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-800">Participant Summary</h2>
+                <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="flex items-center gap-2">
+                      <Plus className="w-4 h-4" />
+                      Add Payment
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Add New Payment</DialogTitle>
+                    </DialogHeader>
+                    <Form {...form}>
+                      <form onSubmit={form.handleSubmit(onSubmitPayment)} className="space-y-4">
+                        <FormField
+                          control={form.control}
+                          name="payFromId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Paid From</FormLabel>
+                              <Select onValueChange={(value: string) => field.onChange(parseInt(value))} value={field.value.toString()}>
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select who is paying" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {subjects.map((subject) => (
+                                    <SelectItem key={subject.id} value={subject.id.toString()}>
+                                      {subject.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <FormField
+                          control={form.control}
+                          name="payToId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Paid To</FormLabel>
+                              <Select onValueChange={(value: string) => field.onChange(parseInt(value))} value={field.value.toString()}>
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select who is receiving" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {subjects.map((subject) => (
+                                    <SelectItem key={subject.id} value={subject.id.toString()}>
+                                      {subject.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <FormField
+                          control={form.control}
+                          name="amount"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Amount</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  placeholder="Enter amount"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <div className="flex justify-end gap-2 pt-4">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setIsPaymentDialogOpen(false)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="submit"
+                            disabled={createPaymentMutation.isPending}
+                          >
+                            {createPaymentMutation.isPending ? 'Adding...' : 'Add Payment'}
+                          </Button>
+                        </div>
+                        
+                        {createPaymentMutation.isError && (
+                          <div className="text-red-600 text-sm text-center">
+                            Failed to add payment. Please try again.
+                          </div>
+                        )}
+                      </form>
+                    </Form>
+                  </DialogContent>
+                </Dialog>
+              </div>
               <div className="space-y-4">
                 {participantSummary.map((participant) => (
-                  <div key={participant.id} className="grid grid-cols-12 p-4 bg-gray-50 rounded-lg gap-4">
-                    <div className="col-span-12 sm:col-span-3 inline-flex items-center">
-                      <h3 className="font-medium text-gray-800">{participant.name}</h3>
-                    </div>
-                    <div className="text-center col-span-6 sm:col-span-3">
+                  <div key={participant.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                    {/* Participant Header */}
+                    <div className="grid grid-cols-12 p-4 bg-gray-50 gap-4">
+                      <div className="col-span-12 md:col-span-4 inline-flex items-center">
+                        <h3 className="font-medium text-gray-800">{participant.name}</h3>
+                      </div>
+                      <div className="text-center col-span-6 md:col-span-2">
                         <p className="text-sm text-gray-600 mb-1">Paid</p>
                         <p className="font-semibold text-green-600">
                           {formatCurrency(participant.paidAmount)}
                         </p>
                       </div>
-                      <div className="text-center col-span-6 sm:col-span-3">
+                      <div className="text-center col-span-6 md:col-span-2">
                         <p className="text-sm text-gray-600 mb-1">Charged</p>
                         <p className="font-semibold text-red-600">
                           {formatCurrency(participant.chargedAmount)}
                         </p>
                       </div>
-                      <div className="text-center col-span-12 sm:col-span-3">
+                      <div className="text-center col-span-6 md:col-span-2">
+                        <p className="text-sm text-gray-600 mb-1">Net Payments</p>
+                        <p className={`font-semibold ${
+                          participant.netPayments > 0 
+                            ? 'text-green-600' 
+                            : participant.netPayments < 0 
+                            ? 'text-red-600' 
+                            : 'text-gray-600'
+                        }`}>
+                          {formatCurrency(participant.netPayments)}
+                        </p>
+                      </div>
+                      <div className="text-center col-span-6 md:col-span-2">
                         <p className="text-sm text-gray-600 mb-1">Balance</p>
                         <p className={`font-semibold ${
                           participant.balance > 0 
@@ -242,6 +427,62 @@ export default function DetailPage() {
                           {formatCurrency(participant.balance)}
                         </p>
                       </div>
+                    </div>
+
+                    {/* Bill Payments List */}
+                    {participant.paymentsInvolved.length > 0 && (
+                      <div className="p-4 border-t border-gray-200">
+                        <h4 className="text-sm font-medium text-gray-700 mb-3">Payment History</h4>
+                        <div className="space-y-2">
+                          {participant.paymentsInvolved.map((payment) => {
+                            const isReceived = payment.pay_to_id === participant.id;
+                            const otherPerson = isReceived ? payment.paid_from : payment.paid_to;
+                            
+                            return (
+                              <div key={payment.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                <div className="flex items-center gap-3">
+                                  <div className={`p-1 rounded-full ${
+                                    isReceived 
+                                      ? 'bg-green-100 text-green-600' 
+                                      : 'bg-red-100 text-red-600'
+                                  }`}>
+                                    {isReceived ? (
+                                      <ArrowDown className="w-4 h-4" />
+                                    ) : (
+                                      <ArrowUp className="w-4 h-4" />
+                                    )}
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-medium text-gray-800">
+                                      {isReceived ? 'Received from' : 'Paid to'} {otherPerson.name}
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                      {new Date(payment.created_at).toLocaleDateString()}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className={`font-semibold ${
+                                    isReceived ? 'text-green-600' : 'text-red-600'
+                                  }`}>
+                                    {isReceived ? '+' : '-'}{formatCurrency(payment.amount)}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* No Payments Message */}
+                    {participant.paymentsInvolved.length === 0 && (
+                      <div className="p-4 border-t border-gray-200">
+                        <p className="text-sm text-gray-500 text-center">
+                          No payments recorded yet
+                        </p>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

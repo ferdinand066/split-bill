@@ -3,6 +3,8 @@ import type {
   Bill,
   BillInformationDetailWithChargedUser,
   BillInformationHeaderWithPaidBy,
+  BillPayment,
+  BillPaymentWithParticipants,
   BillSubject,
   BillType,
   CreateBillInformationResult,
@@ -12,10 +14,13 @@ import {
   createBill,
   createBillInformationDetails,
   createBillInformationHeader,
+  createBillPayment,
   getBill,
+  getBillById,
   getBillInformationDetailByBillId,
   getBillInformationDetails,
   getBillInformationHeaders,
+  getBillPayments,
   getBillSubjects
 } from './database';
 
@@ -23,10 +28,12 @@ import {
 export const queryKeys = {
   bills: ['bills'] as const,
   bill: (slug: string) => ['bills', slug] as const,
+  billById: (id: number) => ['bills', 'id', id] as const,
   billSubjects: (billId: number) => ['bill-subjects', billId] as const,
   billInformationHeaders: (billId: number) => ['bill-information-headers', billId] as const,
   billInformationDetails: (headerId: number) => ['bill-information-details', headerId] as const,
   billInformationDetailByBillId: (billId: number) => ['bill-information-detail-by-bill-id', billId] as const,
+  billPayments: (billId: number) => ['bill-payments', billId] as const,
 };
 
 // Hooks for bills
@@ -35,6 +42,14 @@ export const useBill = (slug: string) => {
     queryKey: queryKeys.bill(slug),
     queryFn: () => getBill(slug),
     enabled: !!slug,
+  });
+};
+
+export const useBillById = (id: number) => {
+  return useQuery<Bill>({
+    queryKey: queryKeys.billById(id),
+    queryFn: () => getBillById(id),
+    enabled: !!id,
   });
 };
 
@@ -126,6 +141,26 @@ export const useAddBillInformation = () => {
       queryClient.invalidateQueries({ 
         queryKey: queryKeys.billInformationHeaders(variables.billId) 
       });
+    },
+  });
+};
+
+export const useBillPayments = (billId: number) => {
+  return useQuery<BillPaymentWithParticipants[]>({
+    queryKey: queryKeys.billPayments(billId),
+    queryFn: () => getBillPayments(billId),
+    enabled: !!billId,
+  });
+};
+
+export const useCreateBillPayment = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation<BillPayment, Error, { billId: number; payFromId: number; payToId: number; amount: number }>({
+    mutationFn: ({ billId, payFromId, payToId, amount }) => createBillPayment(billId, payFromId, payToId, amount),
+    onSuccess: (_, variables) => {
+      // Invalidate and refetch bill payments
+      queryClient.invalidateQueries({ queryKey: queryKeys.billPayments(variables.billId) });
     },
   });
 }; 

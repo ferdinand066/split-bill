@@ -39,6 +39,15 @@ export interface BillInformationDetail {
   created_at: string
 }
 
+export interface BillPayment {
+  id: number
+  bill_id: Bill['id']
+  pay_from_id: BillSubject['id']
+  pay_to_id: BillSubject['id']
+  amount: number
+  created_at: string
+}
+
 // Extended types for joins
 export interface BillInformationHeaderWithPaidBy extends BillInformationHeader {
   paid_by: BillSubject
@@ -46,6 +55,11 @@ export interface BillInformationHeaderWithPaidBy extends BillInformationHeader {
 
 export interface BillInformationDetailWithChargedUser extends BillInformationDetail {
   charged_user: BillSubject
+}
+
+export interface BillPaymentWithParticipants extends BillPayment {
+  paid_from: BillSubject
+  paid_to: BillSubject
 }
 
 // Return types for database operations
@@ -99,6 +113,17 @@ export const getBill = async (slug: string): Promise<Bill> => {
     .from('bills')
     .select('*')
     .eq('slug', slug)
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export const getBillById = async (id: number): Promise<Bill> => {
+  const { data, error } = await supabase
+    .from('bills')
+    .select('*')
+    .eq('id', id)
     .single()
 
   if (error) throw error
@@ -210,6 +235,44 @@ export const createBillInformationDetails = async (
     .from('bill_information_details')
     .insert(detailsData)
     .select()
+
+  if (error) throw error
+  return data
+}
+
+export const createBillPayment = async (
+  billId: number,
+  payFromId: number,
+  payToId: number,
+  amount: number
+): Promise<BillPayment> => {
+  const { data, error } = await supabase
+    .from('bill_payments')
+    .insert([
+      {
+        bill_id: billId,
+        pay_from_id: payFromId,
+        pay_to_id: payToId,
+        amount
+      }
+    ])
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export const getBillPayments = async (billId: number): Promise<BillPaymentWithParticipants[]> => {
+  const { data, error } = await supabase
+    .from('bill_payments')
+    .select(`
+      *,
+      paid_from:bill_subjects!bill_payments_pay_from_id_fkey(*),
+      paid_to:bill_subjects!bill_payments_pay_to_id_fkey(*)
+    `)
+    .eq('bill_id', billId)
+    .order('created_at', { ascending: false })
 
   if (error) throw error
   return data
