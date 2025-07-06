@@ -78,4 +78,30 @@ export const createPaymentSchema = z.object({
   path: ['payToId'],
 });
 
-export type CreatePaymentFormData = z.infer<typeof createPaymentSchema>; 
+export type CreatePaymentFormData = z.infer<typeof createPaymentSchema>;
+
+export const joinBillSchema = z.object({
+  billId: z
+    .string()
+    .min(1, 'Bill ID is required')
+    .refine((val) => !isNaN(parseInt(val)) && parseInt(val) > 0, {
+      message: 'Please enter a valid bill ID (positive number)',
+    }),
+  password: z
+    .string()
+    .min(1, 'Password is required')
+    .max(100, 'Password must be less than 100 characters'),
+});
+
+export const joinBillIdSchema = z.object({
+  billId: z
+    .string()
+    .min(1, 'Bill ID is required')
+    .refine((val) => !isNaN(parseInt(val)) && parseInt(val) > 0, {
+      message: 'Please enter a valid bill ID (positive number)',
+    }),
+});
+
+export type JoinBillIdFormData = z.infer<typeof joinBillIdSchema>;
+
+export type JoinBillFormData = z.infer<typeof joinBillSchema>; 

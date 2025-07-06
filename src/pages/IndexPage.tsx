@@ -1,112 +1,43 @@
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
-import { useBillHistoryStore, usePasswordVerificationStore } from '@/lib/store';
-import { capitalizeFirstLetter, hashPassword } from '@/lib/utils';
-import { formatDistanceToNow } from 'date-fns';
-import { AlertCircle, Clock, Plus, Search, Trash2 } from 'lucide-react';
+
+import { RecentBills } from '@/components/RecentBills';
+import { JoinBillForm } from '@/components/JoinBillForm';
+import { useIndexPage } from '@/hooks/useIndexPage';
+import { AlertCircle, Plus } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
 
 const IndexPage = () => {
-  const navigate = useNavigate();
-  const { bills, removeBill, clearHistory, addBill } = useBillHistoryStore();
-  const { markBillAsVerified } = usePasswordVerificationStore();
-  const [billId, setBillId] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchError, setSearchError] = useState('');
-  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
-  const [password, setPassword] = useState('');
-  const [passwordError, setPasswordError] = useState('');
-  const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
-
-  const handleRemoveBill = (e: React.MouseEvent, slug: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    removeBill(slug);
-  };
-
-  const handleClearHistory = () => {
-    if (confirm('Are you sure you want to clear all bill history?')) {
-      clearHistory();
-    }
-  };
-
-  const handleJoinBill = async () => {
-    const id = parseInt(billId.trim());
-    if (!id || isNaN(id)) {
-      setSearchError('Please enter a valid bill ID (number)');
-      return;
-    }
-
-    setIsSearching(true);
-    setSearchError('');
-
-    try {
-      // Check if bill exists first
-      const { getBillById } = await import('@/lib/database');
-      await getBillById(id);
-      
-      // Bill exists, show password dialog
-      setShowPasswordDialog(true);
-    } catch (error) {
-      setSearchError('Bill not found. Please check the ID and try again.');
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Prevent arrow up/down from incrementing/decrementing the number
-    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      e.preventDefault();
-      return;
-    }
+  const {
+    // State
+    isSearching,
+    showPasswordDialog,
+    passwordError,
+    isVerifyingPassword,
+    deleteConfirmation,
+    clearHistoryConfirmation,
     
-    if (e.key === 'Enter') {
-      handleJoinBill();
-    }
-  };
 
-  const handleVerifyPassword = async () => {
-    if (!password.trim()) {
-      setPasswordError('Password is required');
-      return;
-    }
+    
+    // Handlers
+    handleRemoveBill,
+    confirmDeleteBill,
+    handleClearHistory,
+    confirmClearHistory,
+    handleJoinBill,
+    handleVerifyPassword,
+    handlePasswordKeyDown,
+    closePasswordDialog,
+    
+    // Setters
+    setDeleteConfirmation,
+    setClearHistoryConfirmation,
+  } = useIndexPage();
 
-    setIsVerifyingPassword(true);
-    setPasswordError('');
-
-    try {
-      const id = parseInt(billId.trim());
-      const hashedPassword = await hashPassword(password);
-      
-      const { verifyBillPassword, getBillById } = await import('@/lib/database');
-      const isValid = await verifyBillPassword(id, hashedPassword);
-      
-      if (isValid) {
-        // Password is correct, get bill and navigate
-        const bill = await getBillById(id);
-        addBill(bill);
-        markBillAsVerified(bill.slug);
-        navigate(`/${bill.slug}`);
-        setShowPasswordDialog(false);
-        setPassword('');
-      } else {
-        setPasswordError('Incorrect password. Please try again.');
-      }
-    } catch (error) {
-      setPasswordError('An error occurred. Please try again.');
-    } finally {
-      setIsVerifyingPassword(false);
-    }
-  };
-
-  const handlePasswordKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleVerifyPassword();
-    }
-  };
+  const [password, setPassword] = useState('');
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -132,110 +63,36 @@ const IndexPage = () => {
         </div>
 
         {/* Recent Bills */}
-        {bills.length > 0 && (
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-800">
-                Recent Bills
-              </h2>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleClearHistory}
-                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-              >
-                Clear History
-              </Button>
-            </div>
-            <div className="space-y-3">
-              {bills.map((bill) => (
-                <Link
-                  key={bill.slug}
-                  to={`/${bill.slug}`}
-                  className="block p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <h3 className="font-medium text-gray-800 group-hover:text-blue-700 transition-colors">
-                        {bill.name}
-                      </h3>
-                      <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
-                        <Clock className="w-4 h-4" />
-                        <span>
-                          {capitalizeFirstLetter(formatDistanceToNow(new Date(bill.created_at), { addSuffix: true }))}
-                        </span>
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => handleRemoveBill(e, bill.slug)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
+        <RecentBills 
+          onRemoveBill={handleRemoveBill}
+          onClearHistory={handleClearHistory}
+        />
 
         {/* Join Existing Bill */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">
-            Join Existing Bill
-          </h2>
-          <p className="text-gray-600 mb-4">
-            Have a bill ID? Enter it below to join an existing bill.
-          </p>
-          <div className="space-y-3">
-            <div className="flex gap-2">
-              <input
-                type="number"
-                placeholder="Enter bill ID..."
-                value={billId}
-                onChange={(e) => setBillId(e.target.value)}
-                onKeyDown={handleKeyDown}
-                className="flex-1 h-9 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                disabled={isSearching}
-              />
-              <Button 
-                variant="outline" 
-                onClick={handleJoinBill}
-                disabled={isSearching || !billId.trim()}
-                className="flex items-center gap-2"
-              >
-                {isSearching ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                    Searching...
-                  </>
-                ) : (
-                  <>
-                    <Search className="w-4 h-4" />
-                    Join
-                  </>
-                )}
-              </Button>
-            </div>
-            {searchError && (
-              <div className="flex items-center gap-2 text-red-600 text-sm">
-                <AlertCircle className="w-4 h-4" />
-                {searchError}
-              </div>
-            )}
-          </div>
-        </div>
+        <JoinBillForm
+          onSubmit={handleJoinBill}
+          isLoading={isSearching}
+          error={passwordError}
+        />
       </div>
 
       {/* Password Dialog */}
-      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+      <Dialog open={showPasswordDialog} onOpenChange={(open) => {
+        if (!open) {
+          closePasswordDialog(() => setPassword(''));
+        }
+      }}>
         <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>Enter Bill Password</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleVerifyPassword(password);
+            }}
+            className="space-y-4"
+          >
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
                 Password
@@ -243,12 +100,13 @@ const IndexPage = () => {
               <Input
                 id="password"
                 type="password"
+                autoComplete='new-password'
                 placeholder="Enter the bill password..."
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={handlePasswordKeyDown}
-                className="w-full"
+                onKeyDown={(e) => handlePasswordKeyDown(e, password)}
                 disabled={isVerifyingPassword}
+                className="w-full"
               />
             </div>
             {passwordError && (
@@ -257,28 +115,70 @@ const IndexPage = () => {
                 {passwordError}
               </div>
             )}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowPasswordDialog(false);
-                setPassword('');
-                setPasswordError('');
-              }}
-              disabled={isVerifyingPassword}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleVerifyPassword}
-              disabled={isVerifyingPassword || !password.trim()}
-            >
-              {isVerifyingPassword ? 'Verifying...' : 'Join Bill'}
-            </Button>
-          </DialogFooter>
+            <DialogFooter className='gap-y-2'>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  closePasswordDialog();
+                  setPassword('');
+                }}
+                disabled={isVerifyingPassword}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isVerifyingPassword || !password.trim()}
+              >
+                {isVerifyingPassword ? 'Verifying...' : 'Join Bill'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteConfirmation.isOpen} onOpenChange={(open) => setDeleteConfirmation({ isOpen: open, billSlug: null })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Bill from History</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this bill from your history? This action cannot be undone and will not delete the actual bill.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteBill}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Clear History Confirmation Dialog */}
+      <AlertDialog open={clearHistoryConfirmation} onOpenChange={setClearHistoryConfirmation}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear All Bill History</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to clear all bill history? This will remove all bills from your recent bills list. This action cannot be undone and will not delete the actual bills.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmClearHistory}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Clear All
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

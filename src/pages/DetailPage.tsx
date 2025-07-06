@@ -278,7 +278,7 @@ export default function DetailPage() {
 
         {/* Header */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-y-4">
             <div>
               <h1 className="text-3xl font-bold text-gray-800">{bill.name}</h1>
               <p className="text-gray-600 mt-1">
