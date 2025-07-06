@@ -11,6 +11,7 @@ export interface Bill {
   id: number
   name: string
   slug: string
+  password: string
   created_at: string
 }
 
@@ -74,13 +75,14 @@ export interface CreateBillInformationResult {
 }
 
 // Bill operations
-export const createBill = async (name: string, subjects: string[]): Promise<CreateBillResult> => {
+export const createBill = async (name: string, password: string, subjects: string[]): Promise<CreateBillResult> => {
   // Start a transaction by creating the bill first
   const { data: bill, error: billError } = await supabase
     .from('bills')
     .insert([
       {
         name,
+        password,
         slug: generateSlug(name)
       }
     ])
@@ -128,6 +130,17 @@ export const getBillById = async (id: number): Promise<Bill> => {
 
   if (error) throw error
   return data
+}
+
+export const verifyBillPassword = async (id: number, hashedPassword: string): Promise<boolean> => {
+  const { data, error } = await supabase
+    .from('bills')
+    .select('password')
+    .eq('id', id)
+    .single()
+
+  if (error) throw error
+  return data.password === hashedPassword
 }
 
 export const getBillSubjects = async (billId: number): Promise<BillSubject[]> => {
@@ -276,6 +289,106 @@ export const getBillPayments = async (billId: number): Promise<BillPaymentWithPa
 
   if (error) throw error
   return data
+}
+
+export const updateBillInformationHeader = async (
+  headerId: number,
+  name: string,
+  paidById: number,
+  amount: number,
+  billType: BillType
+): Promise<BillInformationHeader> => {
+  const { data, error } = await supabase
+    .from('bill_information_headers')
+    .update({
+      name,
+      paid_by_id: paidById,
+      amount,
+      bill_type: billType
+    })
+    .eq('id', headerId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export const updateBillInformationDetails = async (
+  headerId: number,
+  details: Array<{ chargedUserId: number; amount: number }>
+): Promise<BillInformationDetail[]> => {
+  // First, delete existing details for this header
+  const { error: deleteError } = await supabase
+    .from('bill_information_details')
+    .delete()
+    .eq('header_id', headerId)
+
+  if (deleteError) throw deleteError
+
+  // Then, create new details
+  const detailsData = details.map(detail => ({
+    header_id: headerId,
+    charged_user_id: detail.chargedUserId,
+    amount: detail.amount
+  }))
+
+  const { data, error } = await supabase
+    .from('bill_information_details')
+    .insert(detailsData)
+    .select()
+
+  if (error) throw error
+  return data
+}
+
+export const deleteBillInformationHeader = async (headerId: number): Promise<void> => {
+  // Delete details first (due to foreign key constraint)
+  const { error: detailsError } = await supabase
+    .from('bill_information_details')
+    .delete()
+    .eq('header_id', headerId)
+
+  if (detailsError) throw detailsError
+
+  // Then delete the header
+  const { error: headerError } = await supabase
+    .from('bill_information_headers')
+    .delete()
+    .eq('id', headerId)
+
+  if (headerError) throw headerError
+}
+
+// Bill Payment operations
+export const updateBillPayment = async (
+  paymentId: number,
+  payFromId: number,
+  payToId: number,
+  amount: number
+): Promise<BillPayment> => {
+  const { data, error } = await supabase
+    .from('bill_payments')
+    .update({
+      pay_from_id: payFromId,
+      pay_to_id: payToId,
+      amount
+    })
+    .eq('id', paymentId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export const deleteBillPayment = async (paymentId: number): Promise<void> => {
+  const { error } = await supabase
+    .from('bill_payments')
+    .delete()
+    .eq('id', paymentId)
+
+  if (error) throw error
 }
 
 // Helper function to generate slug

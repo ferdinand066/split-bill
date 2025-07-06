@@ -1,6 +1,8 @@
 import { Button } from '@/components/ui/button';
-import { useBillHistoryStore } from '@/lib/store';
-import { capitalizeFirstLetter } from '@/lib/utils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { useBillHistoryStore, usePasswordVerificationStore } from '@/lib/store';
+import { capitalizeFirstLetter, hashPassword } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { AlertCircle, Clock, Plus, Search, Trash2 } from 'lucide-react';
 import { useState } from 'react';
@@ -9,9 +11,14 @@ import { Link, useNavigate } from 'react-router-dom';
 const IndexPage = () => {
   const navigate = useNavigate();
   const { bills, removeBill, clearHistory, addBill } = useBillHistoryStore();
+  const { markBillAsVerified } = usePasswordVerificationStore();
   const [billId, setBillId] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
 
   const handleRemoveBill = (e: React.MouseEvent, slug: string) => {
     e.preventDefault();
@@ -36,13 +43,12 @@ const IndexPage = () => {
     setSearchError('');
 
     try {
-      // Use the getBillById function directly
+      // Check if bill exists first
       const { getBillById } = await import('@/lib/database');
-      const bill = await getBillById(id);
+      await getBillById(id);
       
-      // Add to history and navigate
-      addBill(bill);
-      navigate(`/${bill.slug}`);
+      // Bill exists, show password dialog
+      setShowPasswordDialog(true);
     } catch (error) {
       setSearchError('Bill not found. Please check the ID and try again.');
     } finally {
@@ -50,9 +56,55 @@ const IndexPage = () => {
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Prevent arrow up/down from incrementing/decrementing the number
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      return;
+    }
+    
     if (e.key === 'Enter') {
       handleJoinBill();
+    }
+  };
+
+  const handleVerifyPassword = async () => {
+    if (!password.trim()) {
+      setPasswordError('Password is required');
+      return;
+    }
+
+    setIsVerifyingPassword(true);
+    setPasswordError('');
+
+    try {
+      const id = parseInt(billId.trim());
+      const hashedPassword = await hashPassword(password);
+      
+      const { verifyBillPassword, getBillById } = await import('@/lib/database');
+      const isValid = await verifyBillPassword(id, hashedPassword);
+      
+      if (isValid) {
+        // Password is correct, get bill and navigate
+        const bill = await getBillById(id);
+        addBill(bill);
+        markBillAsVerified(bill.slug);
+        navigate(`/${bill.slug}`);
+        setShowPasswordDialog(false);
+        setPassword('');
+      } else {
+        setPasswordError('Incorrect password. Please try again.');
+      }
+    } catch (error) {
+      setPasswordError('An error occurred. Please try again.');
+    } finally {
+      setIsVerifyingPassword(false);
+    }
+  };
+
+  const handlePasswordKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleVerifyPassword();
     }
   };
 
@@ -144,8 +196,8 @@ const IndexPage = () => {
                 placeholder="Enter bill ID..."
                 value={billId}
                 onChange={(e) => setBillId(e.target.value)}
-                onKeyPress={handleKeyPress}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                onKeyDown={handleKeyDown}
+                className="flex-1 h-9 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 disabled={isSearching}
               />
               <Button 
@@ -176,6 +228,57 @@ const IndexPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Password Dialog */}
+      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+        <DialogContent aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>Enter Bill Password</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+                Password
+              </label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Enter the bill password..."
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={handlePasswordKeyDown}
+                className="w-full"
+                disabled={isVerifyingPassword}
+              />
+            </div>
+            {passwordError && (
+              <div className="flex items-center gap-2 text-red-600 text-sm">
+                <AlertCircle className="w-4 h-4" />
+                {passwordError}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowPasswordDialog(false);
+                setPassword('');
+                setPasswordError('');
+              }}
+              disabled={isVerifyingPassword}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleVerifyPassword}
+              disabled={isVerifyingPassword || !password.trim()}
+            >
+              {isVerifyingPassword ? 'Verifying...' : 'Join Bill'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

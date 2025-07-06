@@ -2,24 +2,36 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { BillType } from '@/lib/database';
 import { useBill, useBillInformationDetailByBillId, useBillInformationHeaders, useBillPayments, useBillSubjects, useCreateBillPayment } from '@/lib/queries';
-import { useBillHistoryStore } from '@/lib/store';
-import { formatCurrency } from '@/lib/utils';
-import { createPaymentSchema, type CreatePaymentFormData } from '@/lib/validations';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowDown, ArrowUp, Plus } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
+import { useBillHistoryStore, usePasswordVerificationStore } from '@/lib/store';
+import { formatCurrency, hashPassword } from '@/lib/utils';
+import { type CreatePaymentFormData } from '@/lib/validations';
+import { AlertCircle, ArrowDown, ArrowUp, Plus, ArrowLeft } from 'lucide-react';
+import { useEffect, useState, lazy, Suspense } from 'react';
+import { Link, useParams, useNavigate } from 'react-router-dom';
+
+// Lazy load dialog components
+const EditBillItemDialog = lazy(() => import('@/components/EditBillItemDialog').then(module => ({ default: module.EditBillItemDialog })));
+const EditPaymentDialog = lazy(() => import('@/components/EditPaymentDialog').then(module => ({ default: module.EditPaymentDialog })));
+const PaymentForm = lazy(() => import('@/components/PaymentForm').then(module => ({ default: module.PaymentForm })));
+
 
 export default function DetailPage() {
   const { slug } = useParams();
+  const navigate = useNavigate();
   const [selectedBillType, setSelectedBillType] = useState<string>('all');
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingHeader, setEditingHeader] = useState<any>(null);
+  const [isEditPaymentDialogOpen, setIsEditPaymentDialogOpen] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<any>(null);
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
   const addBill = useBillHistoryStore(state => state.addBill);
+  const { isBillVerified, markBillAsVerified } = usePasswordVerificationStore();
 
   const { data: bill, isLoading: billLoading, error: billError } = useBill(slug || '');
   const { data: subjects = [], isLoading: subjectsLoading } = useBillSubjects(bill?.id || 0);
@@ -28,14 +40,51 @@ export default function DetailPage() {
   const { data: payments = [], isLoading: paymentsLoading } = useBillPayments(bill?.id || 0);
   const createPaymentMutation = useCreateBillPayment();
 
-  const form = useForm<CreatePaymentFormData>({
-    resolver: zodResolver(createPaymentSchema),
-    defaultValues: {
-      payFromId: 0,
-      payToId: 0,
-      amount: '',
-    },
-  });
+  const handleVerifyPassword = async () => {
+    if (!password.trim()) {
+      setPasswordError('Password is required');
+      return;
+    }
+
+    setIsVerifyingPassword(true);
+    setPasswordError('');
+
+    try {
+      if (!bill) return;
+      
+      const hashedPassword = await hashPassword(password);
+      
+      const { verifyBillPassword } = await import('@/lib/database');
+      const isValid = await verifyBillPassword(bill.id, hashedPassword);
+      
+      if (isValid) {
+        markBillAsVerified(bill.slug);
+        setPassword('');
+      } else {
+        setPasswordError('Incorrect password. Please try again.');
+      }
+    } catch (error) {
+      setPasswordError('An error occurred. Please try again.');
+    } finally {
+      setIsVerifyingPassword(false);
+    }
+  };
+
+  const handlePasswordKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleVerifyPassword();
+    }
+  };
+
+  const handleEditBillItem = (header: any) => {
+    setEditingHeader(header);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleEditPayment = (payment: any) => {
+    setEditingPayment(payment);
+    setIsEditPaymentDialogOpen(true);
+  };
 
   // Add bill to history when it's loaded
   useEffect(() => {
@@ -98,8 +147,6 @@ export default function DetailPage() {
         amount: parseFloat(data.amount),
       });
       
-      // Reset form and close dialog
-      form.reset();
       setIsPaymentDialogOpen(false);
     } catch (error) {
       console.error('Error creating payment:', error);
@@ -133,6 +180,63 @@ export default function DetailPage() {
     );
   }
 
+  // Show password dialog overlay if password hasn't been verified
+  if (bill && !isBillVerified(bill.slug)) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
+        <div className="max-w-md w-full bg-white rounded-lg shadow-md p-8">
+          <h1 className="text-2xl font-bold text-gray-800 mb-2 text-center">
+            {bill.name}
+          </h1>
+          <p className="text-gray-600 mb-6 text-center">
+            This bill is password protected
+          </p>
+          
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+                Password
+              </label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Enter the bill password..."
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={handlePasswordKeyDown}
+                className="w-full"
+                disabled={isVerifyingPassword}
+              />
+            </div>
+            {passwordError && (
+              <div className="flex items-center gap-2 text-red-600 text-sm">
+                <AlertCircle className="w-4 h-4" />
+                {passwordError}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => navigate('/')}
+                disabled={isVerifyingPassword}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleVerifyPassword}
+                disabled={isVerifyingPassword || !password.trim()}
+                className="flex-1"
+              >
+                {isVerifyingPassword ? 'Verifying...' : 'Access Bill'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const getBillTypeLabel = (billType: BillType) => {
     switch (billType) {
       case BillType.Transportation:
@@ -160,6 +264,18 @@ export default function DetailPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-4xl mx-auto p-6">
+        {/* Back Button */}
+        <div className="mb-4">
+          <Button
+            variant="outline"
+            onClick={() => navigate('/')}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Bills
+          </Button>
+        </div>
+
         {/* Header */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4">
@@ -233,7 +349,11 @@ export default function DetailPage() {
                 );
 
                 return (
-                  <div key={header.id} className="bg-white rounded-lg shadow-md p-6">
+                  <div 
+                    key={header.id} 
+                    className="bg-white rounded-lg shadow-md p-6 cursor-pointer hover:shadow-lg transition-shadow duration-200"
+                    onClick={() => handleEditBillItem(header)}
+                  >
                     <div className="flex flex-col sm:flex-row items-start justify-between mb-4 gap-x-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-x-3 gap-y-2 mb-2 flex-wrap">
@@ -283,103 +403,20 @@ export default function DetailPage() {
                       Add Payment
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
+                  <DialogContent aria-describedby={undefined} className="sm:max-w-md">
                     <DialogHeader>
                       <DialogTitle>Add New Payment</DialogTitle>
                     </DialogHeader>
-                    <Form {...form}>
-                      <form onSubmit={form.handleSubmit(onSubmitPayment)} className="space-y-4">
-                        <FormField
-                          control={form.control}
-                          name="payFromId"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Paid From</FormLabel>
-                              <Select onValueChange={(value: string) => field.onChange(parseInt(value))} value={field.value.toString()}>
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select who is paying" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {subjects.map((subject) => (
-                                    <SelectItem key={subject.id} value={subject.id.toString()}>
-                                      {subject.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        
-                        <FormField
-                          control={form.control}
-                          name="payToId"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Paid To</FormLabel>
-                              <Select onValueChange={(value: string) => field.onChange(parseInt(value))} value={field.value.toString()}>
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select who is receiving" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {subjects.map((subject) => (
-                                    <SelectItem key={subject.id} value={subject.id.toString()}>
-                                      {subject.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        
-                        <FormField
-                          control={form.control}
-                          name="amount"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Amount</FormLabel>
-                              <FormControl>
-                                <Input
-                                  type="number"
-                                  placeholder="Enter amount"
-                                  {...field}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        
-                        <div className="flex justify-end gap-2 pt-4">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => setIsPaymentDialogOpen(false)}
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            type="submit"
-                            disabled={createPaymentMutation.isPending}
-                          >
-                            {createPaymentMutation.isPending ? 'Adding...' : 'Add Payment'}
-                          </Button>
-                        </div>
-                        
-                        {createPaymentMutation.isError && (
-                          <div className="text-red-600 text-sm text-center">
-                            Failed to add payment. Please try again.
-                          </div>
-                        )}
-                      </form>
-                    </Form>
+                    <Suspense fallback={<div className="p-4 text-center">Loading payment form...</div>}>
+                      <PaymentForm
+                        mode="create"
+                        subjects={subjects}
+                        onSubmit={onSubmitPayment}
+                        onCancel={() => setIsPaymentDialogOpen(false)}
+                        isLoading={createPaymentMutation.isPending}
+                        error={createPaymentMutation.isError ? 'Failed to add payment. Please try again.' : null}
+                      />
+                    </Suspense>
                   </DialogContent>
                 </Dialog>
               </div>
@@ -439,7 +476,11 @@ export default function DetailPage() {
                             const otherPerson = isReceived ? payment.paid_from : payment.paid_to;
                             
                             return (
-                              <div key={payment.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                              <div 
+                                key={payment.id} 
+                                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors duration-200"
+                                onClick={() => handleEditPayment(payment)}
+                              >
                                 <div className="flex items-center gap-3">
                                   <div className={`p-1 rounded-full ${
                                     isReceived 
@@ -490,6 +531,39 @@ export default function DetailPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Edit Bill Item Dialog */}
+      {editingHeader && (
+        <Suspense fallback={<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">Loading edit dialog...</div>}>
+          <EditBillItemDialog
+            isOpen={isEditDialogOpen}
+            onClose={() => {
+              setIsEditDialogOpen(false);
+              setEditingHeader(null);
+            }}
+            header={editingHeader}
+            details={details.filter(detail => detail.header_id === editingHeader.id)}
+            subjects={subjects}
+            billId={bill?.id || 0}
+          />
+        </Suspense>
+      )}
+
+      {/* Edit Payment Dialog */}
+      {editingPayment && (
+        <Suspense fallback={<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">Loading edit dialog...</div>}>
+          <EditPaymentDialog
+            isOpen={isEditPaymentDialogOpen}
+            onClose={() => {
+              setIsEditPaymentDialogOpen(false);
+              setEditingPayment(null);
+            }}
+            payment={editingPayment}
+            subjects={subjects}
+            billId={bill?.id || 0}
+          />
+        </Suspense>
+      )}
     </div>
   );
 } 

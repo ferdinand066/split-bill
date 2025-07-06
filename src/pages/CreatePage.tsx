@@ -8,6 +8,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { createBillSchema, type CreateBillFormData } from '@/lib/validations';
 import { useCreateBill } from '@/lib/queries';
 import { useBillHistoryStore } from '@/lib/store';
+import { hashPassword } from '@/lib/utils';
 import { Plus, X } from 'lucide-react';
 
 const CreatePage = () => {
@@ -30,9 +31,13 @@ const CreatePage = () => {
 
   const onSubmit = async (data: CreateBillFormData) => {
     try {
+      // Hash the password before submitting
+      const hashedPassword = await hashPassword(data.password);
+      
       const result = await createBillMutation.mutateAsync({
         name: data.name,
         subjects: data.subjects.filter(subject => subject.trim() !== ''),
+        password: hashedPassword,
       });
       
       // Add the new bill to the history store
@@ -76,6 +81,24 @@ const CreatePage = () => {
                   <FormControl>
                     <Input
                       placeholder="e.g., Dinner at Restaurant"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Password</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="Input your password"
+                      type='password'
                       {...field}
                     />
                   </FormControl>

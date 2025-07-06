@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   Bill,
+  BillInformationDetail,
   BillInformationDetailWithChargedUser,
+  BillInformationHeader,
   BillInformationHeaderWithPaidBy,
   BillPayment,
   BillPaymentWithParticipants,
@@ -15,13 +17,18 @@ import {
   createBillInformationDetails,
   createBillInformationHeader,
   createBillPayment,
+  deleteBillInformationHeader,
+  deleteBillPayment,
   getBill,
   getBillById,
   getBillInformationDetailByBillId,
   getBillInformationDetails,
   getBillInformationHeaders,
   getBillPayments,
-  getBillSubjects
+  getBillSubjects,
+  updateBillInformationDetails,
+  updateBillInformationHeader,
+  updateBillPayment
 } from './database';
 
 // Query keys
@@ -56,8 +63,8 @@ export const useBillById = (id: number) => {
 export const useCreateBill = () => {
   const queryClient = useQueryClient();
   
-  return useMutation<CreateBillResult, Error, { name: string; subjects: string[] }>({
-    mutationFn: ({ name, subjects }) => createBill(name, subjects),
+  return useMutation<CreateBillResult, Error, { name: string; password: string; subjects: string[] }>({
+    mutationFn: ({ name, password, subjects }) => createBill(name, password, subjects),
     onSuccess: (data) => {
       // Invalidate and refetch bills list
       queryClient.invalidateQueries({ queryKey: queryKeys.bills });
@@ -158,6 +165,97 @@ export const useCreateBillPayment = () => {
   
   return useMutation<BillPayment, Error, { billId: number; payFromId: number; payToId: number; amount: number }>({
     mutationFn: ({ billId, payFromId, payToId, amount }) => createBillPayment(billId, payFromId, payToId, amount),
+    onSuccess: (_, variables) => {
+      // Invalidate and refetch bill payments
+      queryClient.invalidateQueries({ queryKey: queryKeys.billPayments(variables.billId) });
+    },
+  });
+};
+
+// Mutation for updating bill information
+export const useUpdateBillInformation = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation<{ header: BillInformationHeader; details: BillInformationDetail[] }, Error, {
+    headerId: number;
+    billId: number;
+    name: string;
+    paidById: number;
+    amount: number;
+    billType: BillType;
+    chargedUsers: Array<{ userId: number; amount: number }>;
+  }>({
+    mutationFn: async ({ 
+      headerId,
+      name, 
+      paidById, 
+      amount, 
+      billType,
+      chargedUsers 
+    }) => {
+      // Update the header
+      const header = await updateBillInformationHeader(headerId, name, paidById, amount, billType);
+      
+      // Update the details
+      const details = await updateBillInformationDetails(
+        headerId,
+        chargedUsers.map(user => ({
+          chargedUserId: user.userId,
+          amount: user.amount
+        }))
+      );
+      
+      return { header, details };
+    },
+    onSuccess: (_, variables) => {
+      // Invalidate and refetch bill information for this bill
+      queryClient.invalidateQueries({ 
+        queryKey: queryKeys.billInformationHeaders(variables.billId) 
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: queryKeys.billInformationDetailByBillId(variables.billId) 
+      });
+    },
+  });
+};
+
+// Mutation for deleting bill information
+export const useDeleteBillInformation = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation<void, Error, { headerId: number; billId: number }>({
+    mutationFn: ({ headerId }) => deleteBillInformationHeader(headerId),
+    onSuccess: (_, variables) => {
+      // Invalidate and refetch bill information for this bill
+      queryClient.invalidateQueries({ 
+        queryKey: queryKeys.billInformationHeaders(variables.billId) 
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: queryKeys.billInformationDetailByBillId(variables.billId) 
+      });
+    },
+  });
+};
+
+// Mutation for updating bill payment
+export const useUpdateBillPayment = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation<BillPayment, Error, { paymentId: number; billId: number; payFromId: number; payToId: number; amount: number }>({
+    mutationFn: ({ paymentId, payFromId, payToId, amount }) => updateBillPayment(paymentId, payFromId, payToId, amount),
+    onSuccess: (_, variables) => {
+      // Invalidate and refetch bill payments
+      queryClient.invalidateQueries({ queryKey: queryKeys.billPayments(variables.billId) });
+    },
+  });
+};
+
+// Mutation for deleting bill payment
+export const useDeleteBillPayment = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation<void, Error, { paymentId: number; billId: number }>({
+    mutationFn: ({ paymentId }) => deleteBillPayment(paymentId),
     onSuccess: (_, variables) => {
       // Invalidate and refetch bill payments
       queryClient.invalidateQueries({ queryKey: queryKeys.billPayments(variables.billId) });

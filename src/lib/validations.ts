@@ -6,6 +6,10 @@ export const createBillSchema = z.object({
     .string()
     .min(1, 'Bill name is required')
     .max(100, 'Bill name must be less than 100 characters'),
+  password: z
+    .string()
+    .min(1, 'Password is required')
+    .max(100, 'Password must be less than 100 characters'),
   subjects: z
     .array(z.string().min(1, 'Subject name is required').max(50, 'Subject name must be less than 50 characters'))
     .min(1, 'At least one subject is required')
@@ -45,6 +49,13 @@ export const addBillInformationSchema = z.object({
     }, {
       message: 'Total charged amount must be greater than 0',
     }),
+}).refine((data) => {
+  const totalAmount = parseFloat(data.amount);
+  const totalCharged = data.chargedUsers.reduce((sum, item) => sum + parseFloat(item.amount), 0);
+  return Math.abs(totalAmount - totalCharged) < 0.01; // Allow small floating point differences
+}, {
+  message: 'Total charged amount must equal the total amount',
+  path: ['chargedUsers'],
 });
 
 export type AddBillInformationFormData = z.infer<typeof addBillInformationSchema>;
